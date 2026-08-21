@@ -1,12 +1,13 @@
 import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
+  View,
   type TextInputProps,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,21 +25,28 @@ import {
 } from '@/lib/settings';
 import { applySettingsToRunningTracking, errorMessage } from '@/lib/tracking';
 
-const PRIMARY_COLOR = '#208AEF';
-const ERROR_COLOR = '#C42B2B';
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <View style={styles.section}>
+      <ThemedText type="small" themeColor="textSecondary" style={styles.sectionTitle}>
+        {title}
+      </ThemedText>
+      <ThemedView type="backgroundElement" style={styles.sectionCard}>
+        {children}
+      </ThemedView>
+    </View>
+  );
+}
 
 type FieldProps = TextInputProps & { label: string; hint?: string };
 
 function Field({ label, hint, ...inputProps }: FieldProps) {
   const theme = useTheme();
   return (
-    <ThemedView style={styles.field}>
+    <View style={styles.field}>
       <ThemedText type="smallBold">{label}</ThemedText>
       <TextInput
-        style={[
-          styles.input,
-          { backgroundColor: theme.backgroundElement, color: theme.text },
-        ]}
+        style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
         placeholderTextColor={theme.textSecondary}
         autoCapitalize="none"
         autoCorrect={false}
@@ -49,7 +57,7 @@ function Field({ label, hint, ...inputProps }: FieldProps) {
           {hint}
         </ThemedText>
       )}
-    </ThemedView>
+    </View>
   );
 }
 
@@ -113,6 +121,7 @@ export default function SettingsScreen() {
         ...settings,
         brokerUrl: settings.brokerUrl.trim(),
         topic: settings.topic.trim(),
+        trackerId: settings.trackerId.trim(),
         clientId: settings.clientId.trim(),
         intervalSec,
         distanceM,
@@ -150,62 +159,72 @@ export default function SettingsScreen() {
           Impostazioni
         </ThemedText>
 
-        <Field
-          label="Broker MQTT"
-          hint="Usa mqtts://host:porta per TLS oppure mqtt://host:porta in chiaro."
-          placeholder="mqtts://mqtt.esempio.it:8883"
-          keyboardType="url"
-          value={settings.brokerUrl}
-          onChangeText={(brokerUrl) => update({ brokerUrl })}
-        />
-        <Field
-          label="Topic"
-          placeholder="k-city-track/position"
-          value={settings.topic}
-          onChangeText={(topic) => update({ topic })}
-        />
-        <Field
-          label="Tracker ID (tid)"
-          hint="Identifica questo dispositivo nel payload OwnTracks, es. bus1, bus2…"
-          placeholder="bus1"
-          value={settings.trackerId}
-          onChangeText={(trackerId) => update({ trackerId })}
-        />
-        <Field
-          label="Client ID"
-          placeholder="k-city-track-abc123"
-          value={settings.clientId}
-          onChangeText={(clientId) => update({ clientId })}
-        />
-        <Field
-          label="Username"
-          hint="Lascia vuoto se il broker non richiede autenticazione."
-          value={settings.username}
-          onChangeText={(username) => update({ username })}
-        />
-        <Field
-          label="Password"
-          secureTextEntry
-          value={settings.password}
-          onChangeText={(password) => update({ password })}
-        />
-        <Field
-          label="Intervallo (secondi)"
-          keyboardType="numeric"
-          value={intervalText}
-          onChangeText={setIntervalText}
-        />
-        <Field
-          label="Distanza minima (metri)"
-          keyboardType="numeric"
-          value={distanceText}
-          onChangeText={setDistanceText}
-        />
+        <Section title="BROKER MQTT">
+          <Field
+            label="Indirizzo broker"
+            hint="mqtts://host:porta per TLS oppure mqtt://host:porta in chiaro."
+            placeholder="mqtts://mqtt.esempio.it:8883"
+            keyboardType="url"
+            value={settings.brokerUrl}
+            onChangeText={(brokerUrl) => update({ brokerUrl })}
+          />
+          <Field
+            label="Username"
+            hint="Lascia vuoto se il broker non richiede autenticazione."
+            value={settings.username}
+            onChangeText={(username) => update({ username })}
+          />
+          <Field
+            label="Password"
+            secureTextEntry
+            value={settings.password}
+            onChangeText={(password) => update({ password })}
+          />
+        </Section>
+
+        <Section title="PUBBLICAZIONE">
+          <Field
+            label="Topic"
+            placeholder="k-city-track/position"
+            value={settings.topic}
+            onChangeText={(topic) => update({ topic })}
+          />
+          <Field
+            label="Tracker ID (tid)"
+            hint="Identifica questo dispositivo nel payload OwnTracks, es. bus1, bus2…"
+            placeholder="bus1"
+            value={settings.trackerId}
+            onChangeText={(trackerId) => update({ trackerId })}
+          />
+          <Field
+            label="Client ID"
+            placeholder="k-city-track-abc123"
+            value={settings.clientId}
+            onChangeText={(clientId) => update({ clientId })}
+          />
+        </Section>
+
+        <Section title="FREQUENZA">
+          <Field
+            label="Intervallo (secondi)"
+            keyboardType="numeric"
+            value={intervalText}
+            onChangeText={setIntervalText}
+          />
+          <Field
+            label="Distanza minima (metri)"
+            keyboardType="numeric"
+            value={distanceText}
+            onChangeText={setDistanceText}
+          />
+        </Section>
 
         {error && (
-          <ThemedText type="small" style={styles.errorText}>
-            {error}
-          </ThemedText>
+          <View style={[styles.messageCard, { backgroundColor: theme.dangerTint }]}>
+            <ThemedText type="small" style={{ color: theme.danger }}>
+              {error}
+            </ThemedText>
+          </View>
         )}
         {feedback && (
           <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
@@ -216,7 +235,11 @@ export default function SettingsScreen() {
         <Pressable
           onPress={onSave}
           disabled={!loaded}
-          style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}>
+          style={({ pressed }) => [
+            styles.saveButton,
+            { backgroundColor: theme.accent },
+            pressed && styles.pressed,
+          ]}>
           <ThemedText style={styles.saveButtonText}>Salva impostazioni</ThemedText>
         </Pressable>
 
@@ -224,11 +247,8 @@ export default function SettingsScreen() {
           Le modifiche vengono applicate automaticamente al tracciamento in corso.
         </ThemedText>
 
-        <ThemedView style={styles.updatesSection}>
-          <ThemedText type="smallBold" style={styles.centerText}>
-            Aggiornamenti
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+        <Section title="AGGIORNAMENTI">
+          <ThemedText type="small" themeColor="textSecondary">
             Versione {Constants.expoConfig?.version ?? '?'}
             {Updates.updateId ? ` · update ${Updates.updateId.slice(0, 8)}` : ' · build base'}
           </ThemedText>
@@ -237,17 +257,17 @@ export default function SettingsScreen() {
             disabled={checkingUpdate}
             style={({ pressed }) => [
               styles.secondaryButton,
-              { backgroundColor: theme.backgroundElement },
+              { backgroundColor: theme.backgroundSelected },
               (pressed || checkingUpdate) && styles.pressed,
             ]}>
-            <ThemedText type="small">Controlla aggiornamenti</ThemedText>
+            <ThemedText type="smallBold">Controlla aggiornamenti</ThemedText>
           </Pressable>
           {updateStatus && (
             <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
               {updateStatus}
             </ThemedText>
           )}
-        </ThemedView>
+        </Section>
       </ThemedView>
     </ScrollView>
   );
@@ -264,13 +284,25 @@ const styles = StyleSheet.create({
   container: {
     maxWidth: MaxContentWidth,
     flexGrow: 1,
-    gap: Spacing.three,
+    gap: Spacing.four,
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.four,
   },
   title: {
     textAlign: 'center',
-    marginBottom: Spacing.three,
+  },
+  section: {
+    gap: Spacing.two,
+  },
+  sectionTitle: {
+    letterSpacing: 1,
+    marginLeft: Spacing.two,
+  },
+  sectionCard: {
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.four,
   },
   field: {
     gap: Spacing.one,
@@ -281,9 +313,10 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
     fontSize: 16,
   },
-  errorText: {
-    color: ERROR_COLOR,
-    textAlign: 'center',
+  messageCard: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.three,
   },
   centerText: {
     textAlign: 'center',
@@ -293,16 +326,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: Spacing.three,
     borderRadius: Spacing.five,
-    minHeight: 52,
-    backgroundColor: PRIMARY_COLOR,
+    minHeight: 56,
   },
   saveButtonText: {
     color: '#ffffff',
     fontWeight: 700,
-  },
-  updatesSection: {
-    gap: Spacing.two,
-    marginTop: Spacing.four,
   },
   secondaryButton: {
     alignItems: 'center',
