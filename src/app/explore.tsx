@@ -149,7 +149,12 @@ export default function SettingsScreen() {
       setIntervalText(String(next.intervalSec));
       setDistanceText(String(next.distanceM));
       await applySettingsToRunningTracking(next);
-      setTransferStatus({ text: 'Configurazione importata e applicata.', isError: false });
+      setTransferStatus({
+        text:
+          `Importata e applicata: tracker "${next.trackerId || '(vuoto!)'}" · ` +
+          `${next.brokerUrl} · topic ${next.topic} · ${next.intervalSec}s / ${next.distanceM}m`,
+        isError: false,
+      });
     } catch (importError) {
       setTransferStatus({ text: `Import non riuscito: ${errorMessage(importError)}`, isError: true });
     }
@@ -202,8 +207,16 @@ export default function SettingsScreen() {
       if (settings.brokerUrl.trim()) {
         parseBrokerUrl(settings.brokerUrl);
       }
-      const intervalSec = Math.max(1, Number.parseInt(intervalText, 10) || defaultSettings.intervalSec);
-      const distanceM = Math.max(0, Number.parseInt(distanceText, 10) || 0);
+      // Campo vuoto o non numerico: si conserva il valore attuale invece di
+      // saltare a un default a sorpresa.
+      const parsedInterval = Number.parseInt(intervalText, 10);
+      const intervalSec = Number.isFinite(parsedInterval)
+        ? Math.max(1, parsedInterval)
+        : settings.intervalSec;
+      const parsedDistance = Number.parseInt(distanceText, 10);
+      const distanceM = Number.isFinite(parsedDistance)
+        ? Math.max(0, parsedDistance)
+        : settings.distanceM;
       const next: TrackerSettings = {
         ...settings,
         brokerUrl: settings.brokerUrl.trim(),

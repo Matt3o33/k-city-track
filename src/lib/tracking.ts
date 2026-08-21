@@ -260,6 +260,10 @@ export async function applySettingsToRunningTracking(settings: TrackerSettings):
   sharedClient?.end();
   sharedClient = null;
   if (await isTrackingActive()) {
+    // Stop + start completo: la sola ri-registrazione delle opzioni si è
+    // dimostrata inaffidabile (le opzioni numeriche possono perdersi nel
+    // ripristino nativo del task), il riavvio pieno è deterministico.
+    await Location.stopLocationUpdatesAsync(LOCATION_TASK);
     await Location.startLocationUpdatesAsync(LOCATION_TASK, locationTaskOptions(settings));
   }
 }
