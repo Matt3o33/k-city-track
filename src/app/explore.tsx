@@ -124,9 +124,13 @@ export default function SettingsScreen() {
         throw new Error('il file scelto non è una configurazione valida');
       }
       const source = raw as Record<string, unknown>;
-      // Tracker ID e Client ID sono volutamente ignorati: identificano il
-      // singolo dispositivo e non devono essere clonati tra telefoni.
+      // Il Client ID non viene mai importato (deve restare unico per
+      // dispositivo). Il Tracker ID invece viene applicato se il file lo
+      // dichiara: i file preparati per il singolo bus lo contengono.
       const next: TrackerSettings = { ...settings };
+      if (typeof source.trackerId === 'string' && source.trackerId.trim()) {
+        next.trackerId = source.trackerId.trim();
+      }
       if (typeof source.brokerUrl === 'string') next.brokerUrl = source.brokerUrl.trim();
       if (typeof source.topic === 'string') next.topic = source.topic.trim();
       if (typeof source.username === 'string') next.username = source.username;
@@ -354,8 +358,8 @@ export default function SettingsScreen() {
             </Pressable>
           </View>
           <ThemedText type="small" themeColor="textSecondary">
-            Il file k-city-track-config.json contiene broker, credenziali, topic e frequenza.
-            Tracker ID e Client ID restano propri di ogni dispositivo.
+            L&apos;export contiene broker, credenziali, topic e frequenza (senza Tracker ID né
+            Client ID). Se un file importato dichiara un Tracker ID, viene applicato.
           </ThemedText>
           {transferStatus && (
             <ThemedText

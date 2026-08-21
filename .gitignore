@@ -41,3 +41,6 @@ example
 # generated native folders
 /ios
 /android
+
+# Config per-bus con credenziali MQTT: MAI committare (repo pubblico)
+bus-configs/
