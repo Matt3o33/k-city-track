@@ -16,6 +16,7 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { consumeCrashReport } from '@/lib/diagnostics';
+import { loadSettings } from '@/lib/settings';
 import {
   errorMessage,
   getTrackingStatus,
@@ -105,7 +106,12 @@ export default function TrackingScreen() {
         await stopTracking();
       } else {
         await startTracking();
-        setUiNotice('Tracciamento avviato.');
+        const current = await loadSettings();
+        setUiNotice(
+          current.trackerId.trim()
+            ? 'Tracciamento avviato.'
+            : 'Tracciamento avviato, ma il Tracker ID è vuoto: i messaggi partono senza "tid" e il server non può riconoscere il bus. Impostalo nelle Impostazioni.',
+        );
       }
       await refresh();
     } catch (error) {
