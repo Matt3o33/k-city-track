@@ -5,6 +5,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   TextInput,
   View,
@@ -73,6 +74,74 @@ export default function SettingsScreen() {
   const [loaded, setLoaded] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [transferStatus, setTransferStatus] = useState<{ text: string; isError: boolean } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!transferStatus || transferStatus.isError) return;
+    const timer = setTimeout(() => setTransferStatus(null), 5000);
+    return () => clearTimeout(timer);
+  }, [transferStatus]);
+
+  const onExport = async () => {
+    setTransferStatus(null);
+    try {
+      const exported = {
+        brokerUrl: settings.brokerUrl.trim(),
+        topic: settings.topic.trim(),
+        username: settings.username,
+        password: settings.password,
+        intervalSec: Math.max(1, Number.parseInt(intervalText, 10) || settings.intervalSec),
+        distanceM: Math.max(0, Number.parseInt(distanceText, 10) || settings.distanceM),
+      };
+      await Share.share({ message: JSON.stringify(exported, null, 2) });
+    } catch (shareError) {
+      setTransferStatus({ text: `Export non riuscito: ${errorMessage(shareError)}`, isError: true });
+    }
+  };
+
+  const onImport = async () => {
+    setTransferStatus(null);
+    try {
+      let raw: unknown;
+      try {
+        raw = JSON.parse(importText.trim());
+      } catch {
+        throw new Error('il testo incollato non è una configurazione valida');
+      }
+      if (typeof raw !== 'object' || raw === null) {
+        throw new Error('il testo incollato non è una configurazione valida');
+      }
+      const source = raw as Record<string, unknown>;
+      // Tracker ID e Client ID sono volutamente ignorati: identificano il
+      // singolo dispositivo e non devono essere clonati tra telefoni.
+      const next: TrackerSettings = { ...settings };
+      if (typeof source.brokerUrl === 'string') next.brokerUrl = source.brokerUrl.trim();
+      if (typeof source.topic === 'string') next.topic = source.topic.trim();
+      if (typeof source.username === 'string') next.username = source.username;
+      if (typeof source.password === 'string') next.password = source.password;
+      if (typeof source.intervalSec === 'number' && Number.isFinite(source.intervalSec)) {
+        next.intervalSec = Math.max(1, Math.round(source.intervalSec));
+      }
+      if (typeof source.distanceM === 'number' && Number.isFinite(source.distanceM)) {
+        next.distanceM = Math.max(0, Math.round(source.distanceM));
+      }
+      if (next.brokerUrl) {
+        parseBrokerUrl(next.brokerUrl);
+      }
+      await saveSettings(next);
+      setSettings(next);
+      setIntervalText(String(next.intervalSec));
+      setDistanceText(String(next.distanceM));
+      await applySettingsToRunningTracking(next);
+      setImportText('');
+      setTransferStatus({ text: 'Configurazione importata e applicata.', isError: false });
+    } catch (importError) {
+      setTransferStatus({ text: `Import non riuscito: ${errorMessage(importError)}`, isError: true });
+    }
+  };
 
   const onCheckUpdates = async () => {
     setCheckingUpdate(true);
@@ -253,6 +322,57 @@ export default function SettingsScreen() {
           Le modifiche vengono applicate automaticamente al tracciamento in corso.
         </ThemedText>
 
+        <Section title="IMPORTA / ESPORTA">
+          <Pressable
+            onPress={onExport}
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              { backgroundColor: theme.backgroundSelected },
+              pressed && styles.pressed,
+            ]}>
+            <ThemedText type="smallBold">Esporta configurazione</ThemedText>
+          </Pressable>
+          <ThemedText type="small" themeColor="textSecondary">
+            Condivide broker, credenziali, topic e frequenza. Tracker ID e Client ID restano propri
+            di ogni dispositivo.
+          </ThemedText>
+          <TextInput
+            style={[
+              styles.input,
+              styles.importInput,
+              { backgroundColor: theme.background, color: theme.text },
+            ]}
+            placeholder="Incolla qui una configurazione esportata…"
+            placeholderTextColor={theme.textSecondary}
+            autoCapitalize="none"
+            autoCorrect={false}
+            multiline
+            value={importText}
+            onChangeText={(text) => {
+              setImportText(text);
+              setTransferStatus(null);
+            }}
+          />
+          <Pressable
+            onPress={onImport}
+            disabled={!importText.trim()}
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              { backgroundColor: theme.backgroundSelected },
+              (pressed || !importText.trim()) && styles.pressed,
+            ]}>
+            <ThemedText type="smallBold">Importa</ThemedText>
+          </Pressable>
+          {transferStatus && (
+            <ThemedText
+              type="small"
+              themeColor={transferStatus.isError ? undefined : 'textSecondary'}
+              style={[styles.centerText, transferStatus.isError && { color: theme.danger }]}>
+              {transferStatus.text}
+            </ThemedText>
+          )}
+        </Section>
+
         <Section title="AGGIORNAMENTI">
           <ThemedText type="small" themeColor="textSecondary">
             Versione {Constants.expoConfig?.version ?? '?'}
@@ -318,6 +438,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.three,
     fontSize: 16,
+  },
+  importInput: {
+    minHeight: 88,
+    textAlignVertical: 'top',
   },
   messageCard: {
     paddingHorizontal: Spacing.three,
