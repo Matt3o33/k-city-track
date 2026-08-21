@@ -84,10 +84,17 @@ export default function TrackingScreen() {
     opacity: (1 - pulse.value) * 0.4,
   }));
 
+  const [trackerId, setTrackerId] = useState('');
+
   const refresh = useCallback(async () => {
-    const [isActive, trackingStatus] = await Promise.all([isTrackingActive(), getTrackingStatus()]);
+    const [isActive, trackingStatus, currentSettings] = await Promise.all([
+      isTrackingActive(),
+      getTrackingStatus(),
+      loadSettings(),
+    ]);
     setActive(isActive);
     setStatus(trackingStatus);
+    setTrackerId(currentSettings.trackerId.trim());
   }, []);
 
   useEffect(() => {
@@ -167,6 +174,12 @@ export default function TrackingScreen() {
         </View>
 
         <ThemedView type="backgroundElement" style={styles.statusCard}>
+          <InfoRow
+            icon={{ ios: 'bus.fill', android: 'directions_bus', web: 'directions_bus' }}
+            label="Tracker ID"
+            value={trackerId || '⚠ non impostato'}
+          />
+          <View style={[styles.divider, { backgroundColor: theme.backgroundSelected }]} />
           <InfoRow
             icon={{ ios: 'location.fill', android: 'location_on', web: 'location_on' }}
             label="Ultima posizione"

@@ -231,7 +231,7 @@ export default function SettingsScreen() {
       setIntervalText(String(intervalSec));
       setDistanceText(String(distanceM));
       await applySettingsToRunningTracking(next);
-      setFeedback('Impostazioni salvate.');
+      setFeedback(`Impostazioni salvate (tracker "${next.trackerId || 'vuoto!'}").`);
     } catch (saveError) {
       setError(errorMessage(saveError));
     }
