@@ -95,6 +95,12 @@ export default function SettingsScreen() {
   };
 
   useEffect(() => {
+    if (!feedback) return;
+    const timer = setTimeout(() => setFeedback(null), 5000);
+    return () => clearTimeout(timer);
+  }, [feedback]);
+
+  useEffect(() => {
     loadSettings().then((stored) => {
       setSettings(stored);
       setIntervalText(String(stored.intervalSec));
