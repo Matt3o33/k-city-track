@@ -1,3 +1,7 @@
+// Deve essere importato per primo: registra il task di localizzazione in
+// background nello scope globale (requisito di expo-task-manager).
+import '@/lib/tracking';
+
 import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useColorScheme } from 'react-native';

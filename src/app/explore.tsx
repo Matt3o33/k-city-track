@@ -1,30 +1,139 @@
-import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
-import { Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
+import Constants from 'expo-constants';
+import * as Updates from 'expo-updates';
+import { useEffect, useState } from 'react';
+import {
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  type TextInputProps,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ExternalLink } from '@/components/external-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Collapsible } from '@/components/ui/collapsible';
-import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import {
+  defaultSettings,
+  loadSettings,
+  parseBrokerUrl,
+  saveSettings,
+  type TrackerSettings,
+} from '@/lib/settings';
+import { applySettingsToRunningTracking, errorMessage } from '@/lib/tracking';
 
-export default function TabTwoScreen() {
-  const safeAreaInsets = useSafeAreaInsets();
-  const insets = {
-    ...safeAreaInsets,
-    bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.three,
-  };
+const PRIMARY_COLOR = '#208AEF';
+const ERROR_COLOR = '#C42B2B';
+const RELEASES_URL = 'https://github.com/Matt3o33/k-city-track/releases/latest';
+
+type FieldProps = TextInputProps & { label: string; hint?: string };
+
+function Field({ label, hint, ...inputProps }: FieldProps) {
   const theme = useTheme();
+  return (
+    <ThemedView style={styles.field}>
+      <ThemedText type="smallBold">{label}</ThemedText>
+      <TextInput
+        style={[
+          styles.input,
+          { backgroundColor: theme.backgroundElement, color: theme.text },
+        ]}
+        placeholderTextColor={theme.textSecondary}
+        autoCapitalize="none"
+        autoCorrect={false}
+        {...inputProps}
+      />
+      {hint && (
+        <ThemedText type="small" themeColor="textSecondary">
+          {hint}
+        </ThemedText>
+      )}
+    </ThemedView>
+  );
+}
+
+export default function SettingsScreen() {
+  const safeAreaInsets = useSafeAreaInsets();
+  const theme = useTheme();
+
+  const [settings, setSettings] = useState<TrackerSettings>(defaultSettings);
+  const [intervalText, setIntervalText] = useState(String(defaultSettings.intervalSec));
+  const [distanceText, setDistanceText] = useState(String(defaultSettings.distanceM));
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<string | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  const onCheckUpdates = async () => {
+    setCheckingUpdate(true);
+    setUpdateStatus('Controllo aggiornamenti…');
+    try {
+      const result = await Updates.checkForUpdateAsync();
+      if (result.isAvailable) {
+        setUpdateStatus('Aggiornamento trovato, lo scarico…');
+        await Updates.fetchUpdateAsync();
+        setUpdateStatus('Riavvio con la nuova versione…');
+        await Updates.reloadAsync();
+      } else {
+        setUpdateStatus("Sei già all'ultima versione.");
+      }
+    } catch (checkError) {
+      setUpdateStatus(`Controllo non riuscito: ${errorMessage(checkError)}`);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSettings().then((stored) => {
+      setSettings(stored);
+      setIntervalText(String(stored.intervalSec));
+      setDistanceText(String(stored.distanceM));
+      setLoaded(true);
+    });
+  }, []);
+
+  const update = (patch: Partial<TrackerSettings>) => {
+    setSettings((current) => ({ ...current, ...patch }));
+    setFeedback(null);
+  };
+
+  const onSave = async () => {
+    setError(null);
+    setFeedback(null);
+    try {
+      if (settings.brokerUrl.trim()) {
+        parseBrokerUrl(settings.brokerUrl);
+      }
+      const intervalSec = Math.max(1, Number.parseInt(intervalText, 10) || defaultSettings.intervalSec);
+      const distanceM = Math.max(0, Number.parseInt(distanceText, 10) || 0);
+      const next: TrackerSettings = {
+        ...settings,
+        brokerUrl: settings.brokerUrl.trim(),
+        topic: settings.topic.trim(),
+        clientId: settings.clientId.trim(),
+        intervalSec,
+        distanceM,
+      };
+      await saveSettings(next);
+      setSettings(next);
+      setIntervalText(String(intervalSec));
+      setDistanceText(String(distanceM));
+      await applySettingsToRunningTracking(next);
+      setFeedback('Impostazioni salvate.');
+    } catch (saveError) {
+      setError(errorMessage(saveError));
+    }
+  };
 
   const contentPlatformStyle = Platform.select({
     android: {
-      paddingTop: insets.top,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-      paddingBottom: insets.bottom,
+      paddingTop: safeAreaInsets.top,
+      paddingBottom: safeAreaInsets.bottom + BottomTabInset + Spacing.three,
     },
     web: {
       paddingTop: Spacing.six,
@@ -35,91 +144,117 @@ export default function TabTwoScreen() {
   return (
     <ScrollView
       style={[styles.scrollView, { backgroundColor: theme.background }]}
-      contentInset={insets}
+      contentInset={{ bottom: BottomTabInset + Spacing.three }}
+      keyboardShouldPersistTaps="handled"
       contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}>
       <ThemedView style={styles.container}>
-        <ThemedView style={styles.titleContainer}>
-          <ThemedText type="subtitle">Explore</ThemedText>
-          <ThemedText style={styles.centerText} themeColor="textSecondary">
-            This starter app includes example{'\n'}code to help you get started.
+        <ThemedText type="subtitle" style={styles.title}>
+          Impostazioni
+        </ThemedText>
+
+        <Field
+          label="Broker MQTT"
+          hint="Usa mqtts://host:porta per TLS oppure mqtt://host:porta in chiaro."
+          placeholder="mqtts://mqtt.esempio.it:8883"
+          keyboardType="url"
+          value={settings.brokerUrl}
+          onChangeText={(brokerUrl) => update({ brokerUrl })}
+        />
+        <Field
+          label="Topic"
+          placeholder="k-city-track/position"
+          value={settings.topic}
+          onChangeText={(topic) => update({ topic })}
+        />
+        <Field
+          label="Tracker ID (tid)"
+          hint="Identifica questo dispositivo nel payload OwnTracks, es. bus1, bus2…"
+          placeholder="bus1"
+          value={settings.trackerId}
+          onChangeText={(trackerId) => update({ trackerId })}
+        />
+        <Field
+          label="Client ID"
+          placeholder="k-city-track-abc123"
+          value={settings.clientId}
+          onChangeText={(clientId) => update({ clientId })}
+        />
+        <Field
+          label="Username"
+          hint="Lascia vuoto se il broker non richiede autenticazione."
+          value={settings.username}
+          onChangeText={(username) => update({ username })}
+        />
+        <Field
+          label="Password"
+          secureTextEntry
+          value={settings.password}
+          onChangeText={(password) => update({ password })}
+        />
+        <Field
+          label="Intervallo (secondi)"
+          keyboardType="numeric"
+          value={intervalText}
+          onChangeText={setIntervalText}
+        />
+        <Field
+          label="Distanza minima (metri)"
+          keyboardType="numeric"
+          value={distanceText}
+          onChangeText={setDistanceText}
+        />
+
+        {error && (
+          <ThemedText type="small" style={styles.errorText}>
+            {error}
           </ThemedText>
+        )}
+        {feedback && (
+          <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+            {feedback}
+          </ThemedText>
+        )}
 
-          <ExternalLink href="https://docs.expo.dev" asChild>
-            <Pressable style={({ pressed }) => pressed && styles.pressed}>
-              <ThemedView type="backgroundElement" style={styles.linkButton}>
-                <ThemedText type="link">Expo documentation</ThemedText>
-                <SymbolView
-                  tintColor={theme.text}
-                  name={{ ios: 'arrow.up.right.square', android: 'link', web: 'link' }}
-                  size={12}
-                />
-              </ThemedView>
-            </Pressable>
-          </ExternalLink>
+        <Pressable
+          onPress={onSave}
+          disabled={!loaded}
+          style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}>
+          <ThemedText style={styles.saveButtonText}>Salva impostazioni</ThemedText>
+        </Pressable>
+
+        <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+          Le modifiche vengono applicate automaticamente al tracciamento in corso.
+        </ThemedText>
+
+        <ThemedView style={styles.updatesSection}>
+          <ThemedText type="smallBold" style={styles.centerText}>
+            Aggiornamenti
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+            Versione {Constants.expoConfig?.version ?? '?'}
+            {Updates.updateId ? ` · update ${Updates.updateId.slice(0, 8)}` : ' · build base'}
+          </ThemedText>
+          <Pressable
+            onPress={onCheckUpdates}
+            disabled={checkingUpdate}
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              { backgroundColor: theme.backgroundElement },
+              (pressed || checkingUpdate) && styles.pressed,
+            ]}>
+            <ThemedText type="small">Controlla aggiornamenti</ThemedText>
+          </Pressable>
+          {updateStatus && (
+            <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+              {updateStatus}
+            </ThemedText>
+          )}
+          <Pressable onPress={() => Linking.openURL(RELEASES_URL)}>
+            <ThemedText type="linkPrimary" style={styles.centerText}>
+              Scarica APK (GitHub Releases)
+            </ThemedText>
+          </Pressable>
         </ThemedView>
-
-        <ThemedView style={styles.sectionsWrapper}>
-          <Collapsible title="File-based routing">
-            <ThemedText type="small">
-              This app has two screens: <ThemedText type="code">src/app/index.tsx</ThemedText> and{' '}
-              <ThemedText type="code">src/app/explore.tsx</ThemedText>
-            </ThemedText>
-            <ThemedText type="small">
-              The layout file in <ThemedText type="code">src/app/_layout.tsx</ThemedText> sets up
-              the tab navigator.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/router/introduction">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Android, iOS, and web support">
-            <ThemedView type="backgroundElement" style={styles.collapsibleContent}>
-              <ThemedText type="small">
-                You can open this project on Android, iOS, and the web. To open the web version,
-                press <ThemedText type="smallBold">w</ThemedText> in the terminal running this
-                project.
-              </ThemedText>
-              <Image
-                source={require('@/assets/images/tutorial-web.png')}
-                style={styles.imageTutorial}
-              />
-            </ThemedView>
-          </Collapsible>
-
-          <Collapsible title="Images">
-            <ThemedText type="small">
-              For static images, you can use the <ThemedText type="code">@2x</ThemedText> and{' '}
-              <ThemedText type="code">@3x</ThemedText> suffixes to provide files for different
-              screen densities.
-            </ThemedText>
-            <Image source={require('@/assets/images/react-logo.png')} style={styles.imageReact} />
-            <ExternalLink href="https://reactnative.dev/docs/images">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Light and dark mode components">
-            <ThemedText type="small">
-              This template has light and dark mode support. The{' '}
-              <ThemedText type="code">useColorScheme()</ThemedText> hook lets you inspect what the
-              user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Animations">
-            <ThemedText type="small">
-              This template includes an example of an animated component. The{' '}
-              <ThemedText type="code">src/components/ui/collapsible.tsx</ThemedText> component uses
-              the powerful <ThemedText type="code">react-native-reanimated</ThemedText> library to
-              animate opening this hint.
-            </ThemedText>
-          </Collapsible>
-        </ThemedView>
-        {Platform.OS === 'web' && <WebBadge />}
       </ThemedView>
     </ScrollView>
   );
@@ -136,45 +271,53 @@ const styles = StyleSheet.create({
   container: {
     maxWidth: MaxContentWidth,
     flexGrow: 1,
-  },
-  titleContainer: {
     gap: Spacing.three,
-    alignItems: 'center',
     paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.six,
+    paddingVertical: Spacing.four,
+  },
+  title: {
+    textAlign: 'center',
+    marginBottom: Spacing.three,
+  },
+  field: {
+    gap: Spacing.one,
+  },
+  input: {
+    borderRadius: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+    fontSize: 16,
+  },
+  errorText: {
+    color: ERROR_COLOR,
+    textAlign: 'center',
   },
   centerText: {
     textAlign: 'center',
   },
+  saveButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.five,
+    minHeight: 52,
+    backgroundColor: PRIMARY_COLOR,
+  },
+  saveButtonText: {
+    color: '#ffffff',
+    fontWeight: 700,
+  },
+  updatesSection: {
+    gap: Spacing.two,
+    marginTop: Spacing.four,
+  },
+  secondaryButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.five,
+  },
   pressed: {
     opacity: 0.7,
-  },
-  linkButton: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.five,
-    justifyContent: 'center',
-    gap: Spacing.one,
-    alignItems: 'center',
-  },
-  sectionsWrapper: {
-    gap: Spacing.five,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
-  },
-  collapsibleContent: {
-    alignItems: 'center',
-  },
-  imageTutorial: {
-    width: '100%',
-    aspectRatio: 296 / 171,
-    borderRadius: Spacing.three,
-    marginTop: Spacing.two,
-  },
-  imageReact: {
-    width: 100,
-    height: 100,
-    alignSelf: 'center',
   },
 });
