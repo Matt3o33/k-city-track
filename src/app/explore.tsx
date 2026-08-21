@@ -2,7 +2,6 @@ import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
 import { useEffect, useState } from 'react';
 import {
-  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -27,7 +26,6 @@ import { applySettingsToRunningTracking, errorMessage } from '@/lib/tracking';
 
 const PRIMARY_COLOR = '#208AEF';
 const ERROR_COLOR = '#C42B2B';
-const RELEASES_URL = 'https://github.com/Matt3o33/k-city-track/releases/latest';
 
 type FieldProps = TextInputProps & { label: string; hint?: string };
 
@@ -249,11 +247,6 @@ export default function SettingsScreen() {
               {updateStatus}
             </ThemedText>
           )}
-          <Pressable onPress={() => Linking.openURL(RELEASES_URL)}>
-            <ThemedText type="linkPrimary" style={styles.centerText}>
-              Scarica APK (GitHub Releases)
-            </ThemedText>
-          </Pressable>
         </ThemedView>
       </ThemedView>
     </ScrollView>
