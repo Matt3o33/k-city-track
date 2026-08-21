@@ -1,11 +1,11 @@
 import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
 import { useEffect, useState, type ReactNode } from 'react';
+import { Directory, File } from 'expo-file-system';
 import {
   Platform,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   TextInput,
   View,
@@ -74,7 +74,6 @@ export default function SettingsScreen() {
   const [loaded, setLoaded] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [importText, setImportText] = useState('');
   const [transferStatus, setTransferStatus] = useState<{ text: string; isError: boolean } | null>(
     null,
   );
@@ -88,6 +87,7 @@ export default function SettingsScreen() {
   const onExport = async () => {
     setTransferStatus(null);
     try {
+      const directory = await Directory.pickDirectoryAsync();
       const exported = {
         brokerUrl: settings.brokerUrl.trim(),
         topic: settings.topic.trim(),
@@ -96,23 +96,32 @@ export default function SettingsScreen() {
         intervalSec: Math.max(1, Number.parseInt(intervalText, 10) || settings.intervalSec),
         distanceM: Math.max(0, Number.parseInt(distanceText, 10) || settings.distanceM),
       };
-      await Share.share({ message: JSON.stringify(exported, null, 2) });
-    } catch (shareError) {
-      setTransferStatus({ text: `Export non riuscito: ${errorMessage(shareError)}`, isError: true });
+      const file = directory.createFile('k-city-track-config.json', 'application/json');
+      file.write(JSON.stringify(exported, null, 2));
+      setTransferStatus({
+        text: 'Configurazione salvata come k-city-track-config.json nella cartella scelta.',
+        isError: false,
+      });
+    } catch (exportError) {
+      if (/cancel|dismiss|annull/i.test(errorMessage(exportError))) return;
+      setTransferStatus({ text: `Export non riuscito: ${errorMessage(exportError)}`, isError: true });
     }
   };
 
   const onImport = async () => {
     setTransferStatus(null);
     try {
+      const picked = await File.pickFileAsync();
+      if (picked.canceled || !picked.result) return;
+      const content = await picked.result.text();
       let raw: unknown;
       try {
-        raw = JSON.parse(importText.trim());
+        raw = JSON.parse(content.trim());
       } catch {
-        throw new Error('il testo incollato non è una configurazione valida');
+        throw new Error('il file scelto non è una configurazione valida');
       }
       if (typeof raw !== 'object' || raw === null) {
-        throw new Error('il testo incollato non è una configurazione valida');
+        throw new Error('il file scelto non è una configurazione valida');
       }
       const source = raw as Record<string, unknown>;
       // Tracker ID e Client ID sono volutamente ignorati: identificano il
@@ -136,7 +145,6 @@ export default function SettingsScreen() {
       setIntervalText(String(next.intervalSec));
       setDistanceText(String(next.distanceM));
       await applySettingsToRunningTracking(next);
-      setImportText('');
       setTransferStatus({ text: 'Configurazione importata e applicata.', isError: false });
     } catch (importError) {
       setTransferStatus({ text: `Import non riuscito: ${errorMessage(importError)}`, isError: true });
@@ -323,46 +331,32 @@ export default function SettingsScreen() {
         </ThemedText>
 
         <Section title="IMPORTA / ESPORTA">
-          <Pressable
-            onPress={onExport}
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              { backgroundColor: theme.backgroundSelected },
-              pressed && styles.pressed,
-            ]}>
-            <ThemedText type="smallBold">Esporta configurazione</ThemedText>
-          </Pressable>
+          <View style={styles.buttonRow}>
+            <Pressable
+              onPress={onExport}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                styles.rowButton,
+                { backgroundColor: theme.backgroundSelected },
+                pressed && styles.pressed,
+              ]}>
+              <ThemedText type="smallBold">Esporta su file</ThemedText>
+            </Pressable>
+            <Pressable
+              onPress={onImport}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                styles.rowButton,
+                { backgroundColor: theme.backgroundSelected },
+                pressed && styles.pressed,
+              ]}>
+              <ThemedText type="smallBold">Importa da file</ThemedText>
+            </Pressable>
+          </View>
           <ThemedText type="small" themeColor="textSecondary">
-            Condivide broker, credenziali, topic e frequenza. Tracker ID e Client ID restano propri
-            di ogni dispositivo.
+            Il file k-city-track-config.json contiene broker, credenziali, topic e frequenza.
+            Tracker ID e Client ID restano propri di ogni dispositivo.
           </ThemedText>
-          <TextInput
-            style={[
-              styles.input,
-              styles.importInput,
-              { backgroundColor: theme.background, color: theme.text },
-            ]}
-            placeholder="Incolla qui una configurazione esportata…"
-            placeholderTextColor={theme.textSecondary}
-            autoCapitalize="none"
-            autoCorrect={false}
-            multiline
-            value={importText}
-            onChangeText={(text) => {
-              setImportText(text);
-              setTransferStatus(null);
-            }}
-          />
-          <Pressable
-            onPress={onImport}
-            disabled={!importText.trim()}
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              { backgroundColor: theme.backgroundSelected },
-              (pressed || !importText.trim()) && styles.pressed,
-            ]}>
-            <ThemedText type="smallBold">Importa</ThemedText>
-          </Pressable>
           {transferStatus && (
             <ThemedText
               type="small"
@@ -439,9 +433,12 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
     fontSize: 16,
   },
-  importInput: {
-    minHeight: 88,
-    textAlignVertical: 'top',
+  buttonRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  rowButton: {
+    flex: 1,
   },
   messageCard: {
     paddingHorizontal: Spacing.three,
